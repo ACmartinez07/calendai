@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../prisma/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== AUTH ====================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== BUSINESS ====================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+
+  // Campos de perfil profesional
+  slug     String? @unique
+  bio      String?
+  timezone String  @default("America/Bogota")
+
+  // Relaciones
+  accounts     Account[]
+  sessions     Session[]
+  eventTypes   EventType[]
+  availability Availability[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EventType {
+  id     String @id @default(cuid())
+  userId String
+
+  title       String
+  slug        String
+  description String?
+  duration    Int     @default(30) // minutos
+  color       String  @default("#3B82F6")
+
+  isActive     Boolean @default(true)
+  bufferBefore Int     @default(0) // minutos antes
+  bufferAfter  Int     @default(0) // minutos después
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, slug])
+  @@index([userId])
+}
+
+model Availability {
+  id     String @id @default(cuid())
+  userId String
+
+  dayOfWeek Int // 0 = Domingo, 1 = Lunes, ..., 6 = Sábado
+  startTime String // "09:00"
+  endTime   String // "17:00"
+  isEnabled Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayOfWeek])
+  @@index([userId])
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model Booking {
+  id          String @id @default(cuid())
+  eventTypeId String
+
+  // Datos del cliente
+  guestName     String
+  guestEmail    String
+  guestTimezone String
+  guestNotes    String?
+
+  // Horario (siempre en UTC)
+  startTime DateTime
+  endTime   DateTime
+
+  status       BookingStatus @default(CONFIRMED)
+  cancelReason String?
+
+  // Integración Google Calendar
+  googleEventId String?
+
+  eventType EventType @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventTypeId])
+  @@index([startTime, endTime])
+  @@index([guestEmail])
+}
