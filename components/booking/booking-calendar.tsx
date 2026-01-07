@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useSyncExternalStore } from 'react'
 import { format, addDays, startOfDay, isSameDay, isAfter } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Calendar } from '@/components/ui/calendar'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ArrowLeft, Clock, Globe } from 'lucide-react'
 import Link from 'next/link'
 
@@ -36,6 +37,15 @@ interface BookingCalendarProps {
   availability: Availability[]
 }
 
+// Hook para detectar si estamos en cliente
+function useIsClient() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
+}
+
 export function BookingCalendar({
   user,
   eventType,
@@ -44,12 +54,7 @@ export function BookingCalendar({
   const [selectedDate, setSelectedDate] = useState<Date | undefined>()
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
 
-  // Detectar zona horaria del visitante
-  function getInitialTimezone(): string {
-    if (typeof window === 'undefined') return ''
-    return Intl.DateTimeFormat().resolvedOptions().timeZone
-  }
-  const [visitorTimezone] = useState<string>(getInitialTimezone)
+  const isClient = useIsClient()
 
   // Días de la semana disponibles
   const availableDays = useMemo(() => {
@@ -65,11 +70,9 @@ export function BookingCalendar({
   // Función para deshabilitar días
   function isDateDisabled(date: Date): boolean {
     const today = startOfDay(new Date())
-    // Deshabilitar días pasados
     if (!isAfter(date, today) && !isSameDay(date, today)) {
       return true
     }
-    // Deshabilitar días sin disponibilidad
     return !isDayAvailable(date)
   }
 
@@ -93,7 +96,6 @@ export function BookingCalendar({
     const startMinutes = startHour * 60 + startMin
     const endMinutes = endHour * 60 + endMin
 
-    // Generar slots cada 30 minutos
     for (
       let mins = startMinutes;
       mins + eventType.duration <= endMinutes;
@@ -167,7 +169,13 @@ export function BookingCalendar({
               </div>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Globe className="h-4 w-4" />
-                <span>{visitorTimezone || 'Detectando...'}</span>
+                {isClient ? (
+                  <span>
+                    {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                  </span>
+                ) : (
+                  <Skeleton className="h-4 w-32" />
+                )}
               </div>
             </div>
           </CardContent>
@@ -181,19 +189,23 @@ export function BookingCalendar({
             {/* Calendario */}
             <div>
               <h2 className="font-semibold mb-4">Selecciona una fecha</h2>
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={(date) => {
-                  setSelectedDate(date)
-                  setSelectedTime(null)
-                }}
-                disabled={isDateDisabled}
-                locale={es}
-                fromDate={new Date()}
-                toDate={addDays(new Date(), 60)}
-                className="rounded-md border"
-              />
+              {isClient ? (
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => {
+                    setSelectedDate(date)
+                    setSelectedTime(null)
+                  }}
+                  disabled={isDateDisabled}
+                  locale={es}
+                  fromDate={new Date()}
+                  toDate={addDays(new Date(), 60)}
+                  className="rounded-md border"
+                />
+              ) : (
+                <Skeleton className="h-75 w-full rounded-md" />
+              )}
             </div>
 
             {/* Slots de tiempo */}

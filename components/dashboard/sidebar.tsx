@@ -9,10 +9,12 @@ import {
   Clock,
   Settings,
   Link as LinkIcon,
+  CalendarCheck,
 } from 'lucide-react'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Reservas', href: '/dashboard/bookings', icon: CalendarCheck },
   { name: 'Tipos de Evento', href: '/dashboard/events', icon: Calendar },
   { name: 'Disponibilidad', href: '/dashboard/availability', icon: Clock },
   { name: 'Configuración', href: '/dashboard/settings', icon: Settings },
