@@ -4,6 +4,11 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import {
+  createCalendarEvent,
+  deleteCalendarEvent,
+  isSlotAvailable,
+} from '@/lib/google-calendar'
 
 const bookingSchema = z.object({
   eventTypeId: z.string().min(1),
@@ -43,7 +48,7 @@ export async function createBooking(data: BookingFormData) {
   const startTime = new Date(year, month - 1, day, hours, minutes)
   const endTime = new Date(startTime.getTime() + eventType.duration * 60000)
 
-  // Verificar que no haya conflictos
+  // Verificar disponibilidad en la base de datos
   const conflict = await prisma.booking.findFirst({
     where: {
       eventType: { userId: eventType.userId },
@@ -71,7 +76,35 @@ export async function createBooking(data: BookingFormData) {
     }
   }
 
+  // Verificar disponibilidad en Google Calendar
+  const googleAvailable = await isSlotAvailable(
+    eventType.userId,
+    startTime,
+    endTime
+  )
+
+  if (!googleAvailable) {
+    return {
+      error:
+        'Este horario está ocupado en el calendario. Por favor selecciona otro.',
+    }
+  }
+
   try {
+    // Crear el evento en Google Calendar
+    const calendarEvent = await createCalendarEvent(eventType.userId, {
+      title: `${eventType.title} - ${data.guestName}`,
+      description: data.guestNotes
+        ? `Notas del cliente: ${data.guestNotes}`
+        : undefined,
+      startTime,
+      endTime,
+      attendeeEmail: data.guestEmail,
+      attendeeName: data.guestName,
+      timezone: eventType.user.timezone,
+    })
+
+    // Crear la reserva en la base de datos
     const booking = await prisma.booking.create({
       data: {
         eventTypeId: data.eventTypeId,
@@ -82,12 +115,13 @@ export async function createBooking(data: BookingFormData) {
         startTime,
         endTime,
         status: 'CONFIRMED',
+        googleEventId: calendarEvent?.id || null,
       },
     })
 
     return { success: true, bookingId: booking.id }
   } catch (error) {
-    console.error(error)
+    console.error('Error creating booking:', error)
     return { error: 'Error al crear la reserva' }
   }
 }
@@ -172,6 +206,9 @@ export async function cancelBooking(id: string, reason?: string) {
       id,
       eventType: { userId: session.user.id },
     },
+    include: {
+      eventType: true,
+    },
   })
 
   if (!booking) {
@@ -183,6 +220,12 @@ export async function cancelBooking(id: string, reason?: string) {
   }
 
   try {
+    // Eliminar evento de Google Calendar si existe
+    if (booking.googleEventId) {
+      await deleteCalendarEvent(session.user.id, booking.googleEventId)
+    }
+
+    // Actualizar estado en la base de datos
     await prisma.booking.update({
       where: { id },
       data: {
@@ -194,7 +237,7 @@ export async function cancelBooking(id: string, reason?: string) {
     revalidatePath('/dashboard/bookings')
     return { success: true }
   } catch (error) {
-    console.error(error)
+    console.error('Error cancelling booking:', error)
     return { error: 'Error al cancelar la reserva' }
   }
 }

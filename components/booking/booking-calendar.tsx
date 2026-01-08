@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useSyncExternalStore } from 'react'
+import { useState, useMemo, useSyncExternalStore, useTransition } from 'react'
 import { format, addDays, startOfDay, isSameDay, isAfter } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Calendar } from '@/components/ui/calendar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ArrowLeft, Clock, Globe } from 'lucide-react'
+import { ArrowLeft, Clock, Globe, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+import { getAvailableSlots } from '@/actions/slots'
 
 interface Availability {
   dayOfWeek: number
@@ -37,13 +38,17 @@ interface BookingCalendarProps {
   availability: Availability[]
 }
 
-// Hook para detectar si estamos en cliente
 function useIsClient() {
   return useSyncExternalStore(
     () => () => {},
     () => true,
     () => false
   )
+}
+
+interface TimeSlot {
+  time: string
+  available: boolean
 }
 
 export function BookingCalendar({
@@ -53,21 +58,20 @@ export function BookingCalendar({
 }: BookingCalendarProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>()
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
+  const [isPending, startTransition] = useTransition()
 
   const isClient = useIsClient()
 
-  // Días de la semana disponibles
   const availableDays = useMemo(() => {
     return availability.filter((a) => a.isEnabled).map((a) => a.dayOfWeek)
   }, [availability])
 
-  // Función para verificar si un día está disponible
   function isDayAvailable(date: Date): boolean {
     const dayOfWeek = date.getDay()
     return availableDays.includes(dayOfWeek)
   }
 
-  // Función para deshabilitar días
   function isDateDisabled(date: Date): boolean {
     const today = startOfDay(new Date())
     if (!isAfter(date, today) && !isSameDay(date, today)) {
@@ -76,39 +80,19 @@ export function BookingCalendar({
     return !isDayAvailable(date)
   }
 
-  // Generar slots de tiempo para el día seleccionado
-  const timeSlots = useMemo(() => {
-    if (!selectedDate) return []
+  async function handleDateSelect(date: Date | undefined) {
+    setSelectedDate(date)
+    setSelectedTime(null)
+    setTimeSlots([])
 
-    const dayOfWeek = selectedDate.getDay()
-    const dayAvailability = availability.find(
-      (a) => a.dayOfWeek === dayOfWeek && a.isEnabled
-    )
+    if (!date) return
 
-    if (!dayAvailability) return []
-
-    const slots: string[] = []
-    const [startHour, startMin] = dayAvailability.startTime
-      .split(':')
-      .map(Number)
-    const [endHour, endMin] = dayAvailability.endTime.split(':').map(Number)
-
-    const startMinutes = startHour * 60 + startMin
-    const endMinutes = endHour * 60 + endMin
-
-    for (
-      let mins = startMinutes;
-      mins + eventType.duration <= endMinutes;
-      mins += 30
-    ) {
-      const hour = Math.floor(mins / 60)
-      const minute = mins % 60
-      const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-      slots.push(time)
-    }
-
-    return slots
-  }, [selectedDate, availability, eventType.duration])
+    startTransition(async () => {
+      const dateStr = format(date, 'yyyy-MM-dd')
+      const result = await getAvailableSlots(user.slug, eventType.slug, dateStr)
+      setTimeSlots(result.slots)
+    })
+  }
 
   function formatTimeDisplay(time: string): string {
     const [hours, minutes] = time.split(':')
@@ -124,6 +108,8 @@ export function BookingCalendar({
       .map((n) => n[0])
       .join('')
       .toUpperCase() || 'U'
+
+  const availableSlots = timeSlots.filter((s) => s.available)
 
   return (
     <div className="grid md:grid-cols-[300px_1fr] gap-6">
@@ -193,10 +179,7 @@ export function BookingCalendar({
                 <Calendar
                   mode="single"
                   selected={selectedDate}
-                  onSelect={(date) => {
-                    setSelectedDate(date)
-                    setSelectedTime(null)
-                  }}
+                  onSelect={handleDateSelect}
                   disabled={isDateDisabled}
                   locale={es}
                   fromDate={new Date()}
@@ -216,16 +199,22 @@ export function BookingCalendar({
                   : 'Selecciona una fecha'}
               </h2>
 
-              {selectedDate && timeSlots.length > 0 ? (
+              {isPending ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : selectedDate && availableSlots.length > 0 ? (
                 <div className="grid grid-cols-2 gap-2 max-h-75 overflow-y-auto">
-                  {timeSlots.map((time) => (
+                  {availableSlots.map((slot) => (
                     <Button
-                      key={time}
-                      variant={selectedTime === time ? 'default' : 'outline'}
+                      key={slot.time}
+                      variant={
+                        selectedTime === slot.time ? 'default' : 'outline'
+                      }
                       className="justify-center"
-                      onClick={() => setSelectedTime(time)}
+                      onClick={() => setSelectedTime(slot.time)}
                     >
-                      {formatTimeDisplay(time)}
+                      {formatTimeDisplay(slot.time)}
                     </Button>
                   ))}
                 </div>

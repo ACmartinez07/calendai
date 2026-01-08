@@ -15,6 +15,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           prompt: 'consent',
           access_type: 'offline',
           response_type: 'code',
+          scope: [
+            'openid',
+            'email',
+            'profile',
+            'https://www.googleapis.com/auth/calendar.events',
+            'https://www.googleapis.com/auth/calendar.readonly',
+          ].join(' '),
         },
       },
     }),
