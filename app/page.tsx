@@ -152,15 +152,10 @@ export default function LandingPage() {
               <CalendarCheck className="h-6 w-6 text-blue-600" />
               <span className="font-semibold">CalendAI</span>
             </div>
-            <p className="text-sm text-gray-500">
-              © {new Date().getFullYear()} CalendAI. Proyecto de portafolio.
-            </p>
+            <p className="text-sm text-gray-500">CalendAI.</p>
             <div className="flex gap-6 text-sm text-gray-500">
-              <Link href="#" className="hover:text-gray-900">
+              <Link href="/privacy" className="hover:text-gray-900">
                 Privacidad
-              </Link>
-              <Link href="#" className="hover:text-gray-900">
-                Términos
               </Link>
             </div>
           </div>
