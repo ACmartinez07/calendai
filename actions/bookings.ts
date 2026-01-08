@@ -9,6 +9,7 @@ import {
   deleteCalendarEvent,
   isSlotAvailable,
 } from '@/lib/google-calendar'
+import { sendBookingConfirmationEmails } from '@/lib/send-email'
 
 const bookingSchema = z.object({
   eventTypeId: z.string().min(1),
@@ -91,7 +92,6 @@ export async function createBooking(data: BookingFormData) {
   }
 
   try {
-    // Crear el evento en Google Calendar
     const calendarEvent = await createCalendarEvent(eventType.userId, {
       title: `${eventType.title} - ${data.guestName}`,
       description: data.guestNotes
@@ -104,7 +104,6 @@ export async function createBooking(data: BookingFormData) {
       timezone: eventType.user.timezone,
     })
 
-    // Crear la reserva en la base de datos
     const booking = await prisma.booking.create({
       data: {
         eventTypeId: data.eventTypeId,
@@ -116,6 +115,23 @@ export async function createBooking(data: BookingFormData) {
         endTime,
         status: 'CONFIRMED',
         googleEventId: calendarEvent?.id || null,
+      },
+    })
+
+    await sendBookingConfirmationEmails({
+      booking: {
+        guestName: data.guestName,
+        guestEmail: data.guestEmail,
+        guestNotes: data.guestNotes || null,
+        startTime,
+      },
+      eventType: {
+        title: eventType.title,
+        duration: eventType.duration,
+      },
+      host: {
+        name: eventType.user.name,
+        email: eventType.user.email,
       },
     })
 
